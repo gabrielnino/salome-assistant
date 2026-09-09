@@ -281,17 +281,15 @@ def transcribe_audio(audio_np: np.ndarray) -> str:
         except:
             return ""
     else:
-        # faster-whisper en memoria optimizado para comandos cortos y habla natural
+        # faster-whisper en memoria exactamente como en transcribir.py
         try:
             segs, _ = model.transcribe(
                 audio_np,
                 language="es",
                 beam_size=5,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=250),
-                no_speech_threshold=0.4,
-                log_prob_threshold=-1.5,
-                condition_on_previous_text=False
+                vad_filter=False,  # Sin VAD para no cortar palabras cortas como 'acercar' o 'para'
+                initial_prompt="iniciar, detener, parar, zoom más, zoom menos, acercar, alejar, analiza, transcribe, 1x, 2x, 5x",
+                temperature=0.0
             )
             return " ".join(s.text for s in segs).strip()
         except Exception as e:
@@ -346,10 +344,10 @@ COMMANDS = {
     r"\b(deten[a-z]*|par[a-z]*|stop|termin[a-z]*|acab[a-z]*|paus[a-z]*|listo|ya|cort[a-z]*)\b": "stop",
     # reiniciar
     r"\b(reinici[a-z]*|vuelv[a-z]*\s*a\s*grab|otra\s*vez|repet[a-z]*)\b": "restart",
-    # zoom in
-    r"\b(zoom\s*(m[aá]s|in|\+|adelante|acerca)?|acerc[a-z]*|aument[a-z]*\s*zoom|m[aá]s\s*cerca)\b": "zoom_in",
-    # zoom out
-    r"\b(zoom\s*(men[o0]s|out|\-|atr[aá]s|aleja)|alej[a-z]*|reduc[a-z]*\s*zoom|m[aá]s\s*lejos)\b": "zoom_out",
+    # zoom in (acercar, aceptor, acércate, zoom más, más cerca, 2x, 5x)
+    r"\b(zoom\s*(m[aá]s|in|\+|adelante|acerca)?|acerc[a-z]*|acep[a-z]*|aument[a-z]*\s*zoom|m[aá]s\s*cerca|2x|5x|dos\s*equis|cinco\s*equis)\b": "zoom_in",
+    # zoom out (alejar, zoom menos, más lejos, 1x, 0.5x, plano general)
+    r"\b(zoom\s*(men[o0]s|out|\-|atr[aá]s|aleja)|alej[a-z]*|reduc[a-z]*\s*zoom|m[aá]s\s*lejos|1x|0\.5x|uno\s*equis)\b": "zoom_out",
     # analizar
     r"anali[a-z]*|retroaliment[a-z]*|qu[eé]\s*(tal\s*)?estoy|c[oó]mo\s*voy": "analyze",
     # transcribir
