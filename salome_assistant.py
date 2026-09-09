@@ -47,6 +47,28 @@ SAMPLE_RATE  = 16000   # Hz para Whisper
 CHUNK_SECS   = 4       # segundos por chunk de escucha
 SILENCE_DB   = -35     # dB para detectar silencio
 
+# ── Logging estructurado (Harness Standard) ──────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+DEBUG_LOG_FILE = LOG_DIR / f"salome_debug_{TIMESTAMP}.log"
+
+IS_DEBUG = "--debug" in sys.argv or "-d" in sys.argv
+
+import logging
+logging.basicConfig(
+    level=logging.DEBUG if IS_DEBUG else logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(DEBUG_LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logging.info(f"Salomé iniciada. Modo depuración: {IS_DEBUG}. Archivo log: {DEBUG_LOG_FILE}")
+
 # ── Estado global ──────────────────────────────────────────────────────────────
 state = {
     "recording": False,
@@ -61,7 +83,7 @@ audio_queue = queue.Queue()
 # ── Hablar con Salomé ──────────────────────────────────────────────────────────
 def speak(text: str):
     """Reproduce texto con voz de Salomé (pausa media, proceso detached)."""
-    print(f"\n🗣️  Salomé: {text}\n")
+    logging.info(f"Salomé habla: {text}")
     subprocess.Popen(
         ["python", SALOME_SPEAK, text],
         creationflags=0x00000008  # DETACHED_PROCESS
@@ -323,8 +345,10 @@ def listen_loop():
                     # Skip if mostly silence
                     rms = 20 * np.log10(np.sqrt(np.mean(audio_np**2)) + 1e-9)
                     if rms < SILENCE_DB:
+                        logging.debug(f"Audio chunk descartado por silencio (RMS: {rms:.1f} dB < {SILENCE_DB} dB)")
                         continue
 
+                    logging.debug(f"Procesando chunk de audio con volumen RMS: {rms:.1f} dB")
                     # Transcribe in background thread
                     threading.Thread(
                         target=process_audio_chunk,
@@ -340,14 +364,16 @@ def process_audio_chunk(audio_np: np.ndarray):
     if not text or len(text.strip()) < 3:
         return
 
-    print(f"  [{('🎬 GRABANDO' if state['recording'] else '👂 ESCUCHA')}] {text}")
+    mode_label = "GRABANDO" if state['recording'] else "ESCUCHA"
+    logging.info(f"[{mode_label}] Audio transcrito: \"{text}\"")
 
     # Detectar comando de voz
     cmd = detect_command(text)
     if cmd:
+        logging.info(f"Comando de voz reconocido: '{cmd}' a partir del texto: '{text}'")
         execute_command(cmd, text)
     elif state["recording"]:
-        # Es contenido de la grabación → acumular transcripción
+        logging.debug(f"Agregando a transcripción acumulada: {text}")
         state["transcript"].append(text)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
