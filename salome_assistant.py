@@ -195,11 +195,19 @@ def stop_recording():
     if not state["recording"]:
         speak("No estoy grabando en este momento.")
         return
+    logging.info("Deteniendo grabación y cerrando scrcpy...")
     if state["scrcpy_proc"]:
-        state["scrcpy_proc"].terminate()
+        try:
+            state["scrcpy_proc"].terminate()
+            state["scrcpy_proc"].wait(timeout=3)
+        except Exception:
+            subprocess.run(["taskkill", "/F", "/IM", "scrcpy.exe"], capture_output=True)
         state["scrcpy_proc"] = None
+    else:
+        subprocess.run(["taskkill", "/F", "/IM", "scrcpy.exe"], capture_output=True)
+        
     state["recording"] = False
-    speak(f"Grabación detenida. Video guardado en el escritorio.")
+    speak("Grabación detenida. Video guardado en el escritorio.")
 
 def restart_recording():
     stop_recording()
@@ -244,31 +252,22 @@ def transcribe_audio(audio_np: np.ndarray) -> str:
         except:
             return ""
     else:
-        # faster-whisper en memoria o con archivo temporal bien cerrado en Windows
+        # faster-whisper en memoria optimizado para comandos cortos y habla natural
         try:
-            # faster-whisper acepta directamente un array numpy float32 normalizado
-            segs, _ = model.transcribe(audio_np, language="es", beam_size=3)
+            segs, _ = model.transcribe(
+                audio_np,
+                language="es",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=250),
+                no_speech_threshold=0.4,
+                log_prob_threshold=-1.5,
+                condition_on_previous_text=False
+            )
             return " ".join(s.text for s in segs).strip()
-        except Exception:
-            # Fallback con archivo temporal cerrado explícitamente
-            temp_path = None
-            try:
-                import wave
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                    temp_path = f.name
-                with wave.open(temp_path, 'wb') as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(SAMPLE_RATE)
-                    wf.writeframes((audio_np * 32767).astype(np.int16).tobytes())
-                segs, _ = model.transcribe(temp_path, language="es", beam_size=3)
-                return " ".join(s.text for s in segs).strip()
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    try:
-                        os.unlink(temp_path)
-                    except Exception:
-                        pass
+        except Exception as e:
+            logging.debug(f"Error en model.transcribe: {e}")
+            return ""
 
 # ── Análisis con DeepSeek ──────────────────────────────────────────────────────
 def analyze_content():
@@ -312,11 +311,11 @@ Responde de forma conversacional, cálida y directa, en máximo 4 oraciones. En 
 # ── Detección de comandos ──────────────────────────────────────────────────────
 COMMANDS = {
     # iniciar grabación
-    r"inici[a-z]*|empez[a-z]*|comenz[a-z]*|graba[a-z]*|arranca[a-z]*": "start",
+    r"\b(inici[a-z]*|empez[a-z]*|comenz[a-z]*|graba[a-z]*|arranca[a-z]*|dale|vamos)\b": "start",
     # detener
-    r"deten[a-z]*|par[a-z]*\s*grab|stop|termina[a-z]*|acab[a-z]*": "stop",
+    r"\b(deten[a-z]*|par[a-z]*|stop|termin[a-z]*|acab[a-z]*|paus[a-z]*|listo|ya|cort[a-z]*)\b": "stop",
     # reiniciar
-    r"reinici[a-z]*|vuelv[a-z]*\s*a\s*grab|otra\s*vez": "restart",
+    r"\b(reinici[a-z]*|vuelv[a-z]*\s*a\s*grab|otra\s*vez|repet[a-z]*)\b": "restart",
     # zoom in
     r"zoom\s*(m[aá]s|in|\+|adelante|acerca)|acerca[a-z]*|aument[a-z]*\s*zoom": "zoom_in",
     # zoom out
