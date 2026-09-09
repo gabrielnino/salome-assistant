@@ -139,16 +139,23 @@ def tap(x, y):
     adb("shell", "input", "tap", str(x), str(y))
 
 def zoom_in():
-    """Simula pinch-out (zoom +) con adb input swipe multi-touch."""
+    """Ejecuta zoom in tanto en scrcpy como en la pantalla del Pixel."""
     w, h = phone_screen_size()
     cx, cy = w // 2, h // 2
-    # Volume Up como zoom (funciona en app de cámara de Google)
+    # 1. Enviar Scroll up a Android input
+    adb("shell", "input", "scroll", str(cx), str(cy), "--axis", "VSCROLL,-1.5")
+    # 2. Keyevent VOLUME_UP como alternativa
     adb("shell", "input", "keyevent", "KEYCODE_VOLUME_UP")
     state["zoom_level"] = min(state["zoom_level"] + 0.5, 8.0)
     speak(f"Zoom al {state['zoom_level']:.1f}x")
 
 def zoom_out():
+    """Ejecuta zoom out tanto en scrcpy como en la pantalla del Pixel."""
     w, h = phone_screen_size()
+    cx, cy = w // 2, h // 2
+    # 1. Enviar Scroll down a Android input
+    adb("shell", "input", "scroll", str(cx), str(cy), "--axis", "VSCROLL,1.5")
+    # 2. Keyevent VOLUME_DOWN como alternativa
     adb("shell", "input", "keyevent", "KEYCODE_VOLUME_DOWN")
     state["zoom_level"] = max(state["zoom_level"] - 0.5, 1.0)
     speak(f"Zoom al {state['zoom_level']:.1f}x")
@@ -317,9 +324,9 @@ COMMANDS = {
     # reiniciar
     r"\b(reinici[a-z]*|vuelv[a-z]*\s*a\s*grab|otra\s*vez|repet[a-z]*)\b": "restart",
     # zoom in
-    r"zoom\s*(m[aá]s|in|\+|adelante|acerca)|acerca[a-z]*|aument[a-z]*\s*zoom": "zoom_in",
+    r"\b(zoom\s*(m[aá]s|in|\+|adelante|acerca)?|acerc[a-z]*|aument[a-z]*\s*zoom|m[aá]s\s*cerca)\b": "zoom_in",
     # zoom out
-    r"zoom\s*(men[o0]s|out|\-|aleja|aleja)|aleja[a-z]*|reduc[a-z]*\s*zoom": "zoom_out",
+    r"\b(zoom\s*(men[o0]s|out|\-|atr[aá]s|aleja)|alej[a-z]*|reduc[a-z]*\s*zoom|m[aá]s\s*lejos)\b": "zoom_out",
     # analizar
     r"anali[a-z]*|retroaliment[a-z]*|qu[eé]\s*(tal\s*)?estoy|c[oó]mo\s*voy": "analyze",
     # transcribir
