@@ -187,7 +187,7 @@ def open_camera():
     time.sleep(2)
 
 def start_recording():
-    """Inicia scrcpy con grabación de video de cámara trasera."""
+    """Abre la cámara nativa de Google y lanza scrcpy en modo espejo con control total (mouse, teclado y zoom)."""
     if state["recording"]:
         speak("Ya estoy grabando.")
         return
@@ -196,21 +196,22 @@ def start_recording():
     state["record_file"] = outfile
     state["transcript"] = []
 
-    # Cerrar app de cámara si está abierta
-    adb("shell", "am", "force-stop", "com.google.android.GoogleCamera")
-    time.sleep(1)
+    # 1. Abrir la app de Google Camera en el Pixel
+    adb("shell", "am", "start", "-a", "android.media.action.VIDEO_CAPTURE")
+    time.sleep(1.5)
 
-    # Lanzar scrcpy con grabación a 60 FPS y alta tasa de bits
+    # 2. Iniciar grabación física en la app de cámara mediante botón disparador
+    adb("shell", "input", "keyevent", "KEYCODE_CAMERA")
+
+    # 3. Lanzar scrcpy en modo espejo completo con control de teclado, mouse y rueda
     cmd = [
         SCRCPY,
-        "--video-source=camera",
-        "--camera-facing=back",
-        "--camera-fps=60",
-        "--camera-size=1920x1080",
-        "--video-bit-rate=20M",
+        "--max-size=1080",
+        "--max-fps=60",
+        "--stay-awake",
         f"--record={outfile}",
-        "--window-title=SALOME GRABANDO [60 FPS | FHD]",
-        "--window-x=400", "--window-y=100"
+        "--window-title=PIXEL 8 PRO - CONTROL TOTAL [ZOOM CON VOZ Y MOUSE]",
+        "--window-x=300", "--window-y=80"
     ]
     proc = subprocess.Popen(
         cmd,
@@ -224,11 +225,15 @@ def start_recording():
     threading.Thread(target=confirm_action_with_deepseek, args=("start", f"Guardando en {outfile}"), daemon=True).start()
 
 def stop_recording():
-    """Detiene la grabación."""
+    """Detiene la grabación tanto en el Pixel como en scrcpy."""
     if not state["recording"]:
         speak("No estoy grabando en este momento.")
         return
     logging.info("Deteniendo grabación y cerrando scrcpy...")
+    # 1. Detener la grabación en la app de cámara del Pixel
+    adb("shell", "input", "keyevent", "KEYCODE_CAMERA")
+    time.sleep(0.5)
+
     if state["scrcpy_proc"]:
         try:
             state["scrcpy_proc"].terminate()
