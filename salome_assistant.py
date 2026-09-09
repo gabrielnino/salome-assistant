@@ -46,10 +46,23 @@ SALOME_SPEAK = os.getenv("SALOME_SPEAK_PATH", r"C:\Users\luisg\.gemini\config\sa
 
 SAMPLE_RATE  = int(os.getenv("SAMPLE_RATE", "16000"))   # Hz para Whisper
 CHUNK_SECS   = float(os.getenv("CHUNK_SECONDS", "3"))    # segundos por chunk de escucha (más ágil)
-SILENCE_DB   = float(os.getenv("SILENCE_THRESHOLD_DB", "-55")) # umbral de silencio mucho más sensible (-55 dB)
-AUDIO_DEVICE = os.getenv("AUDIO_DEVICE_INDEX", None)
-if AUDIO_DEVICE:
-    AUDIO_DEVICE = int(AUDIO_DEVICE)
+SILENCE_DB   = float(os.getenv("SILENCE_THRESHOLD_DB", "-55")) # umbral de silencio (-55 dB)
+
+# Buscar automáticamente micrófono Shokz si no hay índice explícito
+def find_microphone_device():
+    env_dev = os.getenv("AUDIO_DEVICE_INDEX", "")
+    if env_dev.strip():
+        return int(env_dev.strip())
+    # Buscar dispositivo Shokz
+    try:
+        for idx, dev in enumerate(sd.query_devices()):
+            if dev['max_input_channels'] > 0 and 'shokz' in dev['name'].lower():
+                return idx
+    except Exception:
+        pass
+    return None
+
+AUDIO_DEVICE = find_microphone_device()
 
 # ── Logging estructurado (Harness Standard) ──────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -71,7 +84,14 @@ logging.basicConfig(
     ]
 )
 
-logging.info(f"Salomé iniciada. Modo depuración: {IS_DEBUG}. Archivo log: {DEBUG_LOG_FILE}")
+dev_name = "Default de Windows"
+if AUDIO_DEVICE is not None:
+    try:
+        dev_name = sd.query_devices(AUDIO_DEVICE)['name']
+    except Exception:
+        dev_name = f"Index {AUDIO_DEVICE}"
+
+logging.info(f"Salomé iniciada. Modo depuración: {IS_DEBUG}. Micrófono: '{dev_name}' (Index: {AUDIO_DEVICE}). Archivo log: {DEBUG_LOG_FILE}")
 
 # ── Estado global ──────────────────────────────────────────────────────────────
 state = {
