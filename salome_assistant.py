@@ -248,13 +248,14 @@ _whisper_model = None
 def get_whisper():
     global _whisper_model
     if _whisper_model is None:
+        model_name = os.getenv("WHISPER_MODEL", "base")
         try:
             from faster_whisper import WhisperModel
-            _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-            print("✅ Whisper small cargado (offline)")
+            _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
+            logging.info(f"✅ Whisper {model_name} cargado en CPU (alta velocidad y baja latencia)")
         except ImportError:
             _whisper_model = "google"
-            print("⚠️  Usando Google STT (online)")
+            logging.warning("⚠️  Usando Google STT (online)")
     return _whisper_model
 
 def transcribe_audio(audio_np: np.ndarray) -> str:
