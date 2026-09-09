@@ -138,27 +138,48 @@ def phone_screen_size():
 def tap(x, y):
     adb("shell", "input", "tap", str(x), str(y))
 
-def zoom_in():
-    """Ejecuta zoom in tanto en scrcpy como en la pantalla del Pixel."""
+ZOOM_STOPS = [0.5, 1.0, 2.0, 5.0]
+ZOOM_COORDS_LANDSCAPE = {
+    0.5: (1425, 680),
+    1.0: (1425, 550),
+    2.0: (1425, 440),
+    5.0: (1425, 310),
+}
+ZOOM_COORDS_PORTRAIT = {
+    0.5: (330, 1850),
+    1.0: (490, 1850),
+    2.0: (650, 1850),
+    5.0: (810, 1850),
+}
+
+def get_zoom_coords(level: float):
     w, h = phone_screen_size()
-    cx, cy = w // 2, h // 2
-    # 1. Enviar Scroll up a Android input
-    adb("shell", "input", "scroll", str(cx), str(cy), "--axis", "VSCROLL,-1.5")
-    # 2. Keyevent VOLUME_UP como alternativa
-    adb("shell", "input", "keyevent", "KEYCODE_VOLUME_UP")
-    state["zoom_level"] = min(state["zoom_level"] + 0.5, 8.0)
-    speak(f"Zoom al {state['zoom_level']:.1f}x")
+    coords = ZOOM_COORDS_LANDSCAPE if w > h else ZOOM_COORDS_PORTRAIT
+    # Buscar el stop más cercano
+    closest = min(ZOOM_STOPS, key=lambda x: abs(x - level))
+    return coords.get(closest, coords[1.0]), closest
+
+def zoom_in():
+    """Ejecuta zoom in usando los lentes ópticos reales del Pixel 8 Pro."""
+    current = state.get("zoom_level", 1.0)
+    next_levels = [z for z in ZOOM_STOPS if z > current]
+    target = next_levels[0] if next_levels else 5.0
+
+    (x, y), actual = get_zoom_coords(target)
+    adb("shell", "input", "tap", str(x), str(y))
+    state["zoom_level"] = actual
+    threading.Thread(target=confirm_action_with_deepseek, args=("zoom_in", f"Cambiado a lente {actual}x"), daemon=True).start()
 
 def zoom_out():
-    """Ejecuta zoom out tanto en scrcpy como en la pantalla del Pixel."""
-    w, h = phone_screen_size()
-    cx, cy = w // 2, h // 2
-    # 1. Enviar Scroll down a Android input
-    adb("shell", "input", "scroll", str(cx), str(cy), "--axis", "VSCROLL,1.5")
-    # 2. Keyevent VOLUME_DOWN como alternativa
-    adb("shell", "input", "keyevent", "KEYCODE_VOLUME_DOWN")
-    state["zoom_level"] = max(state["zoom_level"] - 0.5, 1.0)
-    speak(f"Zoom al {state['zoom_level']:.1f}x")
+    """Ejecuta zoom out usando los lentes ópticos reales del Pixel 8 Pro."""
+    current = state.get("zoom_level", 1.0)
+    prev_levels = [z for z in ZOOM_STOPS if z < current]
+    target = prev_levels[-1] if prev_levels else 0.5
+
+    (x, y), actual = get_zoom_coords(target)
+    adb("shell", "input", "tap", str(x), str(y))
+    state["zoom_level"] = actual
+    threading.Thread(target=confirm_action_with_deepseek, args=("zoom_out", f"Cambiado a lente {actual}x"), daemon=True).start()
 
 def open_camera():
     """Abre la app de cámara en modo video."""
@@ -194,8 +215,8 @@ def start_recording():
     )
     state["scrcpy_proc"] = proc
     state["recording"] = True
-    time.sleep(2)
-    speak(f"Grabando. El video se guardará en tu escritorio como video_{ts}.mp4")
+    time.sleep(1)
+    threading.Thread(target=confirm_action_with_deepseek, args=("start", f"Guardando en {outfile}"), daemon=True).start()
 
 def stop_recording():
     """Detiene la grabación."""
@@ -214,7 +235,7 @@ def stop_recording():
         subprocess.run(["taskkill", "/F", "/IM", "scrcpy.exe"], capture_output=True)
         
     state["recording"] = False
-    speak("Grabación detenida. Video guardado en el escritorio.")
+    threading.Thread(target=confirm_action_with_deepseek, args=("stop", "Video guardado"), daemon=True).start()
 
 def restart_recording():
     stop_recording()
@@ -276,28 +297,24 @@ def transcribe_audio(audio_np: np.ndarray) -> str:
             logging.debug(f"Error en model.transcribe: {e}")
             return ""
 
-# ── Análisis con DeepSeek ──────────────────────────────────────────────────────
-def analyze_content():
-    """Pide a DeepSeek que analice el contenido transcrito y dé feedback."""
-    transcript_text = " ".join(state["transcript"])
-    if not transcript_text.strip():
-        speak("Aún no tengo suficiente transcripción para analizar. Sigue hablando.")
-        return
+# ── Confirmaciones inteligentes con DeepSeek ──────────────────────────────────
+ACTION_FALLBACKS = {
+    "start": "¡Entendido! Empiezo a grabar la cámara trasera ya mismo.",
+    "stop": "Listo, detuve la grabación y guardé tu video.",
+    "restart": "Reiniciando la toma. Empezamos de nuevo.",
+    "zoom_in": "Acercando la toma.",
+    "zoom_out": "Abriendo el plano.",
+    "exit": "Hasta luego, que tengas un excelente día."
+}
 
-    speak("Dame un momento que estoy analizando lo que dijiste.")
-
-    prompt = f"""Eres Salomé, una asistente de grabación amigable con acento colombiano.
-El usuario está grabando un video y ha dicho lo siguiente hasta ahora:
-
-\"\"\"{transcript_text}\"\"\"
-
-Analiza el contenido y dile al usuario:
-1. De qué trata lo que está grabando
-2. Qué está haciendo bien
-3. Qué podría mejorar (claridad, ritmo, estructura)
-4. Una sugerencia específica para el siguiente segmento
-
-Responde de forma conversacional, cálida y directa, en máximo 4 oraciones. En español colombiano."""
+def confirm_action_with_deepseek(action_name: str, context_details: str = ""):
+    """Usa DeepSeek para generar una respuesta natural, colombiana y concisa confirmando la acción."""
+    system_prompt = (
+        "Eres Salomé, una asistente de cámara y dirección audiovisual colombiana muy natural, cálida y profesional. "
+        "El usuario acaba de dar una instrucción por voz. Debes confirmarle en UNA sola frase corta y directa "
+        "(máximo 10 palabras) que entendiste y estás ejecutando la acción. Usa tono colombiano natural (ej: 'De una', 'Listo, acercando', 'Grabando ya mismo')."
+    )
+    user_prompt = f"Acción a confirmar: '{action_name}'. Detalle: {context_details}."
 
     try:
         r = requests.post(
@@ -305,15 +322,20 @@ Responde de forma conversacional, cálida y directa, en máximo 4 oraciones. En 
             headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
             json={
                 "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "max_tokens": 40,
+                "temperature": 0.7
             },
-            timeout=30
+            timeout=5
         )
-        feedback = r.json()["choices"][0]["message"]["content"].strip()
-        speak(feedback)
-    except Exception as e:
-        speak(f"No pude conectarme para analizar: {e}")
+        msg = r.json()["choices"][0]["message"]["content"].strip().replace('"', '')
+        speak(msg)
+    except Exception:
+        fallback = ACTION_FALLBACKS.get(action_name, f"Ejecutando {action_name}.")
+        speak(fallback)
 
 # ── Detección de comandos ──────────────────────────────────────────────────────
 COMMANDS = {
