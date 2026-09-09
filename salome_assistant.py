@@ -200,15 +200,20 @@ def start_recording():
     adb("shell", "am", "force-stop", "com.google.android.GoogleCamera")
     time.sleep(1)
 
-    # Lanzar scrcpy con grabación
+    # Lanzar scrcpy con grabación a 60 FPS y alta tasa de bits
+    cmd = [
+        SCRCPY,
+        "--video-source=camera",
+        "--camera-facing=back",
+        "--camera-fps=60",
+        "--camera-size=1920x1080",
+        "--video-bit-rate=20M",
+        f"--record={outfile}",
+        "--window-title=SALOME GRABANDO [60 FPS | FHD]",
+        "--window-x=400", "--window-y=100"
+    ]
     proc = subprocess.Popen(
-        [SCRCPY,
-         "--video-source=camera",
-         "--camera-facing=back",
-         f"--record={outfile}",
-         "--max-size=1080",
-         "--window-title=SALOME GRABANDO",
-         "--window-x=400", "--window-y=100"],
+        cmd,
         cwd=os.path.dirname(SCRCPY),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
