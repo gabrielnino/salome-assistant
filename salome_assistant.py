@@ -44,9 +44,12 @@ ADB  = os.getenv("ADB_PATH", r"C:\Users\luisg\Desktop\scrcpy-win64-v3.3.4\scrcpy
 SCRCPY = os.getenv("SCRCPY_PATH", r"C:\Users\luisg\Desktop\scrcpy-win64-v3.3.4\scrcpy-win64-v3.3.4\scrcpy.exe")
 SALOME_SPEAK = os.getenv("SALOME_SPEAK_PATH", r"C:\Users\luisg\.gemini\config\salome_speak.py")
 
-SAMPLE_RATE  = 16000   # Hz para Whisper
-CHUNK_SECS   = 4       # segundos por chunk de escucha
-SILENCE_DB   = -35     # dB para detectar silencio
+SAMPLE_RATE  = int(os.getenv("SAMPLE_RATE", "16000"))   # Hz para Whisper
+CHUNK_SECS   = float(os.getenv("CHUNK_SECONDS", "3"))    # segundos por chunk de escucha (más ágil)
+SILENCE_DB   = float(os.getenv("SILENCE_THRESHOLD_DB", "-55")) # umbral de silencio mucho más sensible (-55 dB)
+AUDIO_DEVICE = os.getenv("AUDIO_DEVICE_INDEX", None)
+if AUDIO_DEVICE:
+    AUDIO_DEVICE = int(AUDIO_DEVICE)
 
 # ── Logging estructurado (Harness Standard) ──────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -328,10 +331,18 @@ def listen_loop():
     buffer_secs = 0.0
     chunk_size = int(SAMPLE_RATE * 0.1)  # 100ms callbacks
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
-                        dtype='float32', blocksize=chunk_size,
-                        callback=audio_callback):
-        print("🎙️  Escuchando... (di un comando o habla para transcribir)")
+    stream_args = {
+        "samplerate": SAMPLE_RATE,
+        "channels": 1,
+        "dtype": "float32",
+        "blocksize": chunk_size,
+        "callback": audio_callback
+    }
+    if AUDIO_DEVICE is not None:
+        stream_args["device"] = AUDIO_DEVICE
+
+    with sd.InputStream(**stream_args):
+        logging.info(f"🎙️  Escuchando en micrófono (Dispositivo: {AUDIO_DEVICE if AUDIO_DEVICE is not None else 'Default'}, Umbral: {SILENCE_DB} dB)...")
         while state["running"]:
             try:
                 chunk = audio_queue.get(timeout=1.0)
