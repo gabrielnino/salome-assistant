@@ -21,6 +21,12 @@ import os, sys, json, time, threading, subprocess, queue, re, io
 import tempfile, datetime, textwrap
 from pathlib import Path
 
+# Asegurar encoding UTF-8 en terminal de Windows
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Silenciar advertencias de Hugging Face sobre symlinks en Windows
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -238,17 +244,31 @@ def transcribe_audio(audio_np: np.ndarray) -> str:
         except:
             return ""
     else:
-        # faster-whisper
-        wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        import wave
-        with wave.open(wav_file.name, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes((audio_np * 32767).astype(np.int16).tobytes())
-        segs, _ = model.transcribe(wav_file.name, language="es", beam_size=3)
-        os.unlink(wav_file.name)
-        return " ".join(s.text for s in segs).strip()
+        # faster-whisper en memoria o con archivo temporal bien cerrado en Windows
+        try:
+            # faster-whisper acepta directamente un array numpy float32 normalizado
+            segs, _ = model.transcribe(audio_np, language="es", beam_size=3)
+            return " ".join(s.text for s in segs).strip()
+        except Exception:
+            # Fallback con archivo temporal cerrado explícitamente
+            temp_path = None
+            try:
+                import wave
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    temp_path = f.name
+                with wave.open(temp_path, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SAMPLE_RATE)
+                    wf.writeframes((audio_np * 32767).astype(np.int16).tobytes())
+                segs, _ = model.transcribe(temp_path, language="es", beam_size=3)
+                return " ".join(s.text for s in segs).strip()
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except Exception:
+                        pass
 
 # ── Análisis con DeepSeek ──────────────────────────────────────────────────────
 def analyze_content():
