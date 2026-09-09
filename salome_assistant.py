@@ -19,6 +19,11 @@ y al pedir "analiza" usa DeepSeek para dar retroalimentación.
 
 import os, sys, json, time, threading, subprocess, queue, re, io
 import tempfile, datetime, textwrap
+
+# Silenciar advertencias de Hugging Face sobre symlinks en Windows
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import sounddevice as sd
 import numpy as np
 import requests
