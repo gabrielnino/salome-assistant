@@ -19,6 +19,7 @@ y al pedir "analiza" usa DeepSeek para dar retroalimentación.
 
 import os, sys, json, time, threading, subprocess, queue, re, io
 import tempfile, datetime, textwrap
+from pathlib import Path
 
 # Silenciar advertencias de Hugging Face sobre symlinks en Windows
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
